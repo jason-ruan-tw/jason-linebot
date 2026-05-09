@@ -108,63 +108,25 @@ def get_market() -> str:
         return f"查詢失敗：{e}"
 
 
-# ── 股名→代碼對照表（常用股即時可查，背景載入完整清單） ──
+# ── 股名→代碼對照表（從 JSON 檔直接載入，11000+ 檔） ──────
+import json as _json
 import threading
 
-_stock_map: dict = {
-    "台積電": "2330", "鴻海": "2317", "聯發科": "2454", "台塑": "1301",
-    "南亞": "1303", "中鋼": "2002", "富邦金": "2881", "國泰金": "2882",
-    "中信金": "2891", "兆豐金": "2886", "玉山金": "2884", "永豐金": "2890",
-    "第一金": "2892", "合庫金": "5880", "台新金": "2887", "元大金": "2885",
-    "開發金": "2883", "國票金": "2889", "日月光投控": "3711", "聯電": "2303",
-    "台達電": "2308", "廣達": "2382", "仁寶": "2324", "緯創": "3231",
-    "英業達": "2356", "光寶科": "2301", "群創": "3481", "友達": "2409",
-    "台化": "1326", "台灣大": "3045", "中華電": "2412", "遠傳": "4904",
-    "台泥": "1101", "亞泥": "1102", "統一": "1216", "統一超": "2912",
-    "全家": "5903", "裕隆": "2201", "和泰車": "2207", "長榮": "2603",
-    "陽明": "2609", "萬海": "2615", "長榮航": "2618", "台積": "2330",
-    "元大台灣50": "0050", "元大高股息": "0056", "大立光": "3008",
-    "聯詠": "3034", "瑞昱": "2379", "祥碩": "5269", "信驊": "5274",
-    "和碩": "4938", "緯穎": "6669", "可成": "2474", "南亞科": "2408",
-    "華邦電": "2344", "旺宏": "2337", "聯茂": "6213", "力積電": "6770",
-}
-_map_loaded = False
+_MAP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stock_map.json")
+try:
+    with open(_MAP_FILE, encoding="utf-8") as _f:
+        _stock_map: dict = _json.load(_f)
+    print(f"[StockMap] 從檔案載入 {len(_stock_map)} 檔")
+except Exception as _e:
+    print(f"[StockMap] 檔案載入失敗: {_e}，使用內建備用")
+    _stock_map: dict = {
+        "台積電": "2330", "鴻海": "2317", "聯發科": "2454", "長榮": "2603",
+        "陽明": "2609", "萬海": "2615", "富采": "3714", "台光電": "2383",
+        "精金": "3049", "聯茂": "6213", "日月光投控": "3711", "聯電": "2303",
+    }
+_map_loaded = True
 
 
-def _fetch_stock_map():
-    """背景執行緒：從 TWSE/TPEx OpenAPI 載入完整股票名稱對照表"""
-    global _stock_map, _map_loaded
-    import time
-    sources = [
-        # 上市
-        ("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", "Code", "Name", "上市"),
-        # 上櫃
-        ("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes", "SecuritiesCompanyCode", "CompanyName", "上櫃"),
-    ]
-    for url, code_key, name_key, label in sources:
-        for attempt in range(3):
-            try:
-                r = requests.get(url, verify=False, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
-                items = r.json()
-                if not items:
-                    raise ValueError("empty")
-                before = len(_stock_map)
-                for item in items:
-                    code = item.get(code_key, "").strip()
-                    name = item.get(name_key, "").strip()
-                    if code and name and len(code) <= 6:
-                        _stock_map[name] = code
-                print(f"[StockMap] {label}載入 {len(_stock_map)-before} 檔，共 {len(_stock_map)}")
-                break
-            except Exception as e:
-                print(f"[StockMap] {label}第{attempt+1}次失敗: {e}")
-                if attempt < 2:
-                    time.sleep(5)
-    _map_loaded = True
-
-
-# 啟動時在背景載入（不阻塞 gunicorn 啟動）
-threading.Thread(target=_fetch_stock_map, daemon=True).start()
 
 
 def name_to_code(name: str) -> str:
