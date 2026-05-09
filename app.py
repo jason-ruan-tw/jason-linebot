@@ -8,14 +8,6 @@ import os
 import re
 import sys
 import requests
-import tempfile
-
-sys.setrecursionlimit(10000)  # mplfinance 在某些環境需要較高遞迴上限
-import matplotlib
-matplotlib.use('Agg')
-import pandas as pd
-import yfinance as yf
-import mplfinance as mpf
 from flask import Flask, request, abort, send_file
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -24,6 +16,24 @@ from linebot.v3.messaging import (
     ReplyMessageRequest, PushMessageRequest, TextMessage, ImageMessage,
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
+
+# 重型套件延遲載入（加快冷啟動速度）
+_chart_libs_loaded = False
+
+def _load_chart_libs():
+    global _chart_libs_loaded, matplotlib, pd, yf, mpf
+    if _chart_libs_loaded:
+        return
+    sys.setrecursionlimit(10000)
+    import matplotlib as matplotlib
+    matplotlib.use('Agg')
+    import pandas as pd_m
+    import yfinance as yf_m
+    import mplfinance as mpf_m
+    globals()['pd'] = pd_m
+    globals()['yf'] = yf_m
+    globals()['mpf'] = mpf_m
+    _chart_libs_loaded = True
 
 # ── 設定（Render 上透過環境變數注入）──────────────────
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
@@ -301,16 +311,23 @@ def get_base_url() -> str:
         return ""
 
 
-_tw_style = mpf.make_mpf_style(
-    marketcolors=mpf.make_marketcolors(
-        up='red', down='green',
-        wick={'up': 'red', 'down': 'green'},
-        edge={'up': 'red', 'down': 'green'},
-        volume={'up': 'red', 'down': 'green'},
-    ),
-    gridstyle='--', gridcolor='#e0e0e0',
-    facecolor='white', figcolor='white',
-)
+_tw_style = None  # 延遲建立，等 chart libs 載入後才初始化
+
+def _get_tw_style():
+    global _tw_style
+    if _tw_style is None:
+        _load_chart_libs()
+        _tw_style = mpf.make_mpf_style(
+            marketcolors=mpf.make_marketcolors(
+                up='red', down='green',
+                wick={'up': 'red', 'down': 'green'},
+                edge={'up': 'red', 'down': 'green'},
+                volume={'up': 'red', 'down': 'green'},
+            ),
+            gridstyle='--', gridcolor='#e0e0e0',
+            facecolor='white', figcolor='white',
+        )
+    return _tw_style
 
 
 def _patch_tw_today(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
@@ -344,6 +361,7 @@ def _patch_tw_today(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
 
 def make_chart(symbol: str):
     """產生 K 線圖（台灣色系：紅漲綠跌），回傳本地檔案路徑"""
+    _load_chart_libs()
     try:
         is_tw = bool(re.match(r"^\d{4,6}$", symbol))
         yf_sym = f"{symbol}.TW" if is_tw else symbol
@@ -366,7 +384,7 @@ def make_chart(symbol: str):
         out = os.path.join(CHART_DIR, f"{symbol}.png")
         mpf.plot(df, type='candle', volume=True,
             mav=(5, 20, 60),
-            style=_tw_style,
+            style=_get_tw_style(),
             title=f"{symbol}  60D  MA5/20/60",
             ylabel='Price', ylabel_lower='Vol',
             figsize=(10, 6), savefig=out)
@@ -524,6 +542,11 @@ def chart(symbol: str):
     if path and os.path.exists(path):
         return send_file(path, mimetype="image/png")
     return "圖表生成失敗", 404
+
+
+@app.route("/ping")
+def ping():
+    return "pong"
 
 
 @app.route("/", methods=["GET"])
