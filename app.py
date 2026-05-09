@@ -36,9 +36,9 @@ def _load_chart_libs():
     _chart_libs_loaded = True
 
 # ── 設定（Render 上透過環境變數注入）──────────────────
-CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
-CHANNEL_TOKEN  = os.environ.get("LINE_CHANNEL_TOKEN", "")
-LINE_USER_ID   = os.environ.get("LINE_USER_ID", "U7818f4e68740285a54aff722d7c05863")
+CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET") or "2998bfcacdd7b32dddf386193aeefd46"
+CHANNEL_TOKEN  = os.environ.get("LINE_CHANNEL_TOKEN") or "GQ7j41XU5eTF46OZBBsfqra/AF6tIec2aGkmKswrx/ymyCyTlbmhoqOl2H0cDo7gBQm8IkDf6Zib4tQ6OXBGQuqotzk4IyphDJubGs0Kc+23hbxmu/HknMVNVWRd1c1Y2PD1ryGBN6BHzYVPZtF1VgdB04t89/1O/w1cDnyilFU="
+LINE_USER_ID   = os.environ.get("LINE_USER_ID") or "U7818f4e68740285a54aff722d7c05863"
 # ──────────────────────────────────────────────────
 
 app = Flask(__name__)
