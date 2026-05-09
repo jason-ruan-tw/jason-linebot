@@ -6,8 +6,11 @@ Jason LINE Bot 雙向對話伺服器
 
 import os
 import re
+import sys
 import requests
 import tempfile
+
+sys.setrecursionlimit(10000)  # mplfinance 在某些環境需要較高遞迴上限
 import matplotlib
 matplotlib.use('Agg')
 import pandas as pd
