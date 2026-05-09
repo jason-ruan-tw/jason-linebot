@@ -7,3 +7,4 @@ yfinance==1.2.0
 matplotlib==3.9.4
 pandas==2.3.3
 numpy==2.0.2
+beautifulsoup4==4.13.4

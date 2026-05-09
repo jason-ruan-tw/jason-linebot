@@ -82,6 +82,45 @@ def get_market() -> str:
         return f"查詢失敗：{e}"
 
 
+# ── 股名→代碼對照表（啟動時載入） ────────────────────
+_stock_map = {}  # {名稱: 代碼}
+
+def _load_stock_map():
+    global _stock_map
+    if _stock_map:
+        return
+    try:
+        from bs4 import BeautifulSoup
+        for mode in ("2", "4"):  # 2=上市, 4=上櫃
+            r = requests.get(
+                f"https://isin.twse.com.tw/isin/C_public.jsp?strMode={mode}",
+                verify=False, timeout=15,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            soup = BeautifulSoup(r.text, "html.parser")
+            for row in soup.select("table tr")[1:]:
+                cells = [td.get_text(strip=True) for td in row.find_all("td")]
+                if cells and cells[0]:
+                    parts = cells[0].split("　")  # 全形空白分隔
+                    if len(parts) == 2 and parts[0].isdigit():
+                        _stock_map[parts[1]] = parts[0]
+        print(f"[StockMap] 載入 {len(_stock_map)} 檔股票")
+    except Exception as e:
+        print(f"[StockMap] 載入失敗: {e}")
+
+
+def name_to_code(name: str) -> str:
+    """股名轉代碼，精確或模糊比對"""
+    _load_stock_map()
+    if name in _stock_map:
+        return _stock_map[name]
+    # 模糊比對（包含）
+    matches = [(n, c) for n, c in _stock_map.items() if name in n]
+    if matches:
+        return matches[0][1]
+    return ""
+
+
 # ── 查個股 ────────────────────────────────────────
 def get_stock(code: str) -> str:
     try:
@@ -378,10 +417,10 @@ HELP_TEXT = """\
 查美股夜盤（盤前/盤後）：
   美股夜盤 / 美夜盤
 
-查個股（輸入股票代碼）：
+查個股（代碼或股名皆可）：
   2330 → 台積電
-  2317 → 鴻海
-  0050 → 元大台灣50
+  台積電 → 同上
+  鴻海、聯發科、台塑... 都可以
 
 查技術圖（60日K線+均線+量）：
   圖 2330 → 台積電技術圖
@@ -452,7 +491,12 @@ def process_text(reply_token: str, text: str):
     elif re.match(r"^(說明|help|Help|HELP)$", text):
         reply(reply_token, HELP_TEXT)
     else:
-        reply(reply_token, f"收到：「{text}」\n\n傳「說明」查看可用指令。")
+        # 嘗試用股名查詢
+        code = name_to_code(text)
+        if code:
+            reply_with_chart(reply_token, get_stock(code), code)
+        else:
+            reply(reply_token, f"收到：「{text}」\n\n傳「說明」查看可用指令。")
 
 
 if handler:
