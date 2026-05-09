@@ -139,7 +139,6 @@ def name_to_code(name: str) -> str:
 
 def name_to_code(name: str) -> str:
     """股名轉代碼，精確或模糊比對"""
-    _load_stock_map()
     if name in _stock_map:
         return _stock_map[name]
     # 模糊比對（包含）
