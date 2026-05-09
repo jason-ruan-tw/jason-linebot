@@ -550,6 +550,16 @@ def ping():
     return "pong"
 
 
+@app.route("/debug-push")
+def debug_push():
+    """測試從 Render 推訊息，確認憑證正確"""
+    try:
+        push(f"DEBUG: USER_ID={LINE_USER_ID!r} TOKEN_LEN={len(CHANNEL_TOKEN)}")
+        return f"push sent. USER_ID={LINE_USER_ID!r} TOKEN_LEN={len(CHANNEL_TOKEN)}"
+    except Exception as e:
+        return f"push FAILED: {e}. USER_ID={LINE_USER_ID!r} TOKEN_LEN={len(CHANNEL_TOKEN)}", 500
+
+
 @app.route("/", methods=["GET"])
 def index():
     return "Jason LINE Bot 運行中 ✅"
