@@ -99,53 +99,57 @@ def get_market() -> str:
         return f"查詢失敗：{e}"
 
 
-# ── 股名→代碼對照表（常用股票內建，避免下載 7MB） ──────
-_stock_map = {
-    "台積電": "2330", "鴻海": "2317", "聯發科": "2454", "台塑": "1301",
-    "南亞": "1303", "中鋼": "2002", "富邦金": "2881", "國泰金": "2882",
-    "中信金": "2891", "兆豐金": "2886", "玉山金": "2884", "永豐金": "2890",
-    "第一金": "2892", "合庫金": "5880", "台新金": "2887", "元大金": "2885",
-    "開發金": "2883", "國票金": "2889", "日月光": "3711", "聯電": "2303",
-    "台達電": "2308", "廣達": "2382", "仁寶": "2324", "緯創": "3231",
-    "英業達": "2356", "光寶科": "2301", "群創": "3481", "友達": "2409",
-    "奇美實": "3009", "南電": "8046", "台化": "1326", "台灣大": "3045",
-    "中華電": "2412", "遠傳": "4904", "台泥": "1101", "亞泥": "1102",
-    "統一": "1216", "統一超": "2912", "全家": "5903", "寶成": "9904",
-    "豐泰": "9910", "裕隆": "2201", "和泰車": "2207", "台汽電": "8249",
-    "中裕": "4147", "浩鼎": "4174", "長榮": "2603", "陽明": "2609",
-    "萬海": "2615", "台航": "2617", "榮運": "2607", "慧洋": "2637",
-    "元大台灣50": "0050", "元大高股息": "0056", "國泰永續": "00878",
-    "富邦台50": "006208", "中信關鍵半導體": "00891", "統一FANG": "00757",
-    "力積電": "6770", "世界先進": "5347", "南亞科": "2408", "華邦電": "2344",
-    "旺宏": "2337", "威盛": "2388", "矽統": "2363", "瑞昱": "2379",
-    "聯詠": "3034", "晨星": "3697", "祥碩": "5269", "譜瑞": "4966",
-    "創意": "3443", "M31": "6643", "力旺": "3529", "信驊": "5274",
-    "奕力": "3598", "偉詮電": "2436", "金麗科": "3228", "智原": "3035",
-    "台勝科": "3532", "漢唐": "2404", "帆宣": "6196", "崇越": "5434",
-    "大立光": "3008", "玉晶光": "3406", "今國光": "6209", "亞光": "3019",
-    "正達": "3149", "揚明光": "3504", "台表科": "6278", "可成": "2474",
-    "和碩": "4938", "緯穎": "6669", "雲達": "6699", "台灣虎航": "6757",
-}
+# ── 股名→代碼對照表（背景載入完整清單） ──────────────
+import threading
+
+_stock_map: dict = {}
+_map_loaded = False
+
+
+def _fetch_stock_map():
+    """背景執行緒：從 TWSE/TPEx 載入完整股票名稱對照表"""
+    global _stock_map, _map_loaded
+    try:
+        # 使用 TWSE OpenAPI（JSON 格式，比 HTML 快）
+        r = requests.get(
+            "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+            verify=False, timeout=30, headers={"User-Agent": "Mozilla/5.0"},
+        )
+        for item in r.json():
+            code = item.get("Code", "")
+            name = item.get("Name", "").strip()
+            if code and name:
+                _stock_map[name] = code
+        print(f"[StockMap] 上市載入 {len(_stock_map)} 檔")
+
+        # 補上櫃
+        r2 = requests.get(
+            "https://openapi.twse.com.tw/v1/exchangeReport/TPEX_STOCK_DAY_ALL",
+            verify=False, timeout=30, headers={"User-Agent": "Mozilla/5.0"},
+        )
+        before = len(_stock_map)
+        for item in r2.json():
+            code = item.get("Code", "")
+            name = item.get("Name", "").strip()
+            if code and name:
+                _stock_map[name] = code
+        print(f"[StockMap] 上櫃再補 {len(_stock_map)-before} 檔，共 {len(_stock_map)} 檔")
+    except Exception as e:
+        print(f"[StockMap] 載入失敗: {e}")
+    finally:
+        _map_loaded = True
+
+
+# 啟動時在背景載入（不阻塞 gunicorn 啟動）
+threading.Thread(target=_fetch_stock_map, daemon=True).start()
 
 
 def name_to_code(name: str) -> str:
     """股名轉代碼，精確或模糊比對"""
     if name in _stock_map:
         return _stock_map[name]
-    # 模糊比對（包含）
-    matches = [(n, c) for n, c in _stock_map.items() if name in n or n in name]
-    return matches[0][1] if matches else ""
-
-
-def name_to_code(name: str) -> str:
-    """股名轉代碼，精確或模糊比對"""
-    if name in _stock_map:
-        return _stock_map[name]
-    # 模糊比對（包含）
     matches = [(n, c) for n, c in _stock_map.items() if name in n]
-    if matches:
-        return matches[0][1]
-    return ""
+    return matches[0][1] if matches else ""
 
 
 # ── 查個股 ────────────────────────────────────────
