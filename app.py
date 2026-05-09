@@ -47,7 +47,7 @@ def get_market() -> str:
     try:
         r = requests.get(
             "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_t00.tw",
-            timeout=5,
+            timeout=5, verify=False,
         )
         info = r.json().get("msgArray", [{}])[0]
         index  = info.get("z", "N/A")
@@ -55,7 +55,7 @@ def get_market() -> str:
 
         r2 = requests.get(
             "https://www.twse.com.tw/fund/BFI82U?response=json&type=day",
-            timeout=5,
+            timeout=5, verify=False,
         )
         rows = r2.json().get("data", [])
         lines = ["📊 台股即時大盤", f"加權指數：{index} 點", ""]
@@ -86,7 +86,7 @@ def get_stock(code: str) -> str:
         for market in ("tse", "otc"):
             r = requests.get(
                 f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={market}_{code}.tw",
-                timeout=5,
+                verify=False, timeout=5,
             )
             arr = r.json().get("msgArray", [])
             if arr and arr[0].get("z", "-") not in ("-", ""):
@@ -131,7 +131,7 @@ def get_tw_night() -> str:
         r = requests.post(
             "https://mis.taifex.com.tw/futures/api/getQuoteList",
             json={"MarketType": "1", "CommodityID": "TX"},
-            headers=headers, timeout=10,
+            headers=headers, verify=False, timeout=10,
         )
         contracts = r.json()["RtData"]["QuoteList"]
 
@@ -167,7 +167,7 @@ def _fetch_us_quote(sym: str) -> dict:
         f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}",
         params={"includePrePost": "true", "interval": "1m", "range": "1d"},
         headers={"User-Agent": "Mozilla/5.0"},
-        timeout=6,
+        verify=False, timeout=6,
     )
     return r.json()["chart"]["result"][0]["meta"]
 
@@ -270,7 +270,7 @@ def _patch_tw_today(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
     try:
         r = requests.get(
             f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{symbol}.tw",
-            timeout=4,
+            verify=False, timeout=4,
         )
         info = r.json().get("msgArray", [{}])[0]
         d = info.get("d", "")          # 格式 20260508
