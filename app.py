@@ -21,13 +21,14 @@ from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
-    ReplyMessageRequest, TextMessage, ImageMessage,
+    ReplyMessageRequest, PushMessageRequest, TextMessage, ImageMessage,
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 # ── 設定（Render 上透過環境變數注入）──────────────────
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
 CHANNEL_TOKEN  = os.environ.get("LINE_CHANNEL_TOKEN", "")
+LINE_USER_ID   = os.environ.get("LINE_USER_ID", "U7818f4e68740285a54aff722d7c05863")
 # ──────────────────────────────────────────────────
 
 app = Flask(__name__)
@@ -35,14 +36,19 @@ handler = WebhookHandler(CHANNEL_SECRET) if CHANNEL_SECRET else None
 config  = Configuration(access_token=CHANNEL_TOKEN)
 
 
-def reply(reply_token: str, text: str):
+def push(text: str):
+    """用 push API 傳訊息（不依賴 reply token，適合冷啟動延遲）"""
     with ApiClient(config) as client:
-        MessagingApi(client).reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
+        MessagingApi(client).push_message(
+            PushMessageRequest(
+                to=LINE_USER_ID,
                 messages=[TextMessage(text=text[:5000])],
             )
         )
+
+
+def reply(reply_token: str, text: str):
+    push(text)
 
 
 # ── 查大盤 ────────────────────────────────────────
@@ -372,9 +378,9 @@ def make_chart(symbol: str):
 
 def reply_image(reply_token: str, image_url: str):
     with ApiClient(config) as client:
-        MessagingApi(client).reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
+        MessagingApi(client).push_message(
+            PushMessageRequest(
+                to=LINE_USER_ID,
                 messages=[ImageMessage(
                     original_content_url=image_url,
                     preview_image_url=image_url,
@@ -384,21 +390,28 @@ def reply_image(reply_token: str, image_url: str):
 
 
 def reply_with_chart(reply_token: str, text: str, symbol: str):
-    """同時回覆文字和技術圖"""
-    ngrok = get_base_url()
-    messages = [TextMessage(text=text[:5000])]
-    if ngrok:
+    """推送文字，再嘗試推送技術圖（push 模式，不受 reply token 時效限制）"""
+    # 先推文字（快）
+    push(text)
+    # 再嘗試推圖（慢，失敗也沒關係）
+    base = get_base_url()
+    if base:
         path = make_chart(symbol)
         if path:
-            url = f"{ngrok}/chart/{symbol}"
-            messages.append(ImageMessage(
-                original_content_url=url,
-                preview_image_url=url,
-            ))
-    with ApiClient(config) as client:
-        MessagingApi(client).reply_message(
-            ReplyMessageRequest(reply_token=reply_token, messages=messages)
-        )
+            url = f"{base}/chart/{symbol}"
+            try:
+                with ApiClient(config) as client:
+                    MessagingApi(client).push_message(
+                        PushMessageRequest(
+                            to=LINE_USER_ID,
+                            messages=[ImageMessage(
+                                original_content_url=url,
+                                preview_image_url=url,
+                            )],
+                        )
+                    )
+            except Exception as e:
+                print(f"[Chart push error] {e}")
 
 
 # ── 說明 ──────────────────────────────────────────
