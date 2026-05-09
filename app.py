@@ -132,28 +132,34 @@ _map_loaded = False
 
 
 def _fetch_stock_map():
-    """背景執行緒：從 TWSE OpenAPI 載入股票名稱對照表"""
+    """背景執行緒：從 TWSE/TPEx OpenAPI 載入完整股票名稱對照表"""
     global _stock_map, _map_loaded
     import time
-    for attempt in range(3):
-        try:
-            r = requests.get(
-                "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
-                verify=False, timeout=30, headers={"User-Agent": "Mozilla/5.0"},
-            )
-            items = r.json()
-            if not items:
-                raise ValueError("empty response")
-            for item in items:
-                code = item.get("Code", "")
-                name = item.get("Name", "").strip()
-                if code and name and len(code) <= 6:
-                    _stock_map[name] = code
-            print(f"[StockMap] 上市載入 {len(_stock_map)} 檔")
-            break
-        except Exception as e:
-            print(f"[StockMap] 第{attempt+1}次失敗: {e}")
-            time.sleep(5)
+    sources = [
+        # 上市
+        ("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", "Code", "Name", "上市"),
+        # 上櫃
+        ("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes", "SecuritiesCompanyCode", "CompanyName", "上櫃"),
+    ]
+    for url, code_key, name_key, label in sources:
+        for attempt in range(3):
+            try:
+                r = requests.get(url, verify=False, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+                items = r.json()
+                if not items:
+                    raise ValueError("empty")
+                before = len(_stock_map)
+                for item in items:
+                    code = item.get(code_key, "").strip()
+                    name = item.get(name_key, "").strip()
+                    if code and name and len(code) <= 6:
+                        _stock_map[name] = code
+                print(f"[StockMap] {label}載入 {len(_stock_map)-before} 檔，共 {len(_stock_map)}")
+                break
+            except Exception as e:
+                print(f"[StockMap] {label}第{attempt+1}次失敗: {e}")
+                if attempt < 2:
+                    time.sleep(5)
     _map_loaded = True
 
 
