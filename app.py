@@ -94,6 +94,15 @@ def get_market() -> str:
                 sign = "▲" if diff > 0 else "▼"
                 amt  = f"{abs(diff):,}"
                 lines.append(f"  {label_map[name]}：{sign} {amt}")
+        # 資料時間
+        t_str = info.get("t", "")
+        d_str = info.get("d", "")
+        if d_str and t_str:
+            lines.append(f"\n📅 資料時間：{d_str[:4]}/{d_str[4:6]}/{d_str[6:]} {t_str}（台北時間）")
+        else:
+            from datetime import datetime, timezone, timedelta
+            now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y/%m/%d %H:%M")
+            lines.append(f"\n📅 查詢時間：{now}（台北時間）")
         return "\n".join(lines)
     except Exception as e:
         return f"查詢失敗：{e}"
@@ -189,11 +198,18 @@ def get_stock(code: str) -> str:
                 def fmt_p(v):
                     try: return str(int(float(v))) if float(v) == int(float(v)) else f"{float(v):.2f}"
                     except: return v
+                # 資料日期與時間
+                d_str = info.get("d", "")  # 20260508
+                t_str = info.get("t", "")  # 13:30:00
+                ts = ""
+                if d_str and t_str:
+                    ts = f"\n📅 成交時間：{d_str[:4]}/{d_str[4:6]}/{d_str[6:]} {t_str}（台北時間）"
                 return (
                     f"📈 {code} {name}\n"
                     f"現價：{fmt_p(price)}  {change_str}\n"
                     f"開：{fmt_p(open_p)}  高：{fmt_p(high)}  低：{fmt_p(low)}\n"
                     f"昨收：{fmt_p(ref)}  成交量：{vol} 張"
+                    f"{ts}"
                 )
         return f"找不到股票代碼 {code}，請確認是否正確。"
     except Exception as e:
@@ -231,11 +247,13 @@ def get_tw_night() -> str:
         sign  = "▲" if diff >= 0 else "▼"
         time_fmt = f"{t[:2]}:{t[2:4]}:{t[4:6]}" if len(t) >= 6 else t
 
+        d_str = main.get("CDate", "")  # 20260508
+        date_fmt = f"{d_str[:4]}/{d_str[4:6]}/{d_str[6:]}" if len(d_str) == 8 else ""
         lines = [
             f"🌙 台指期夜盤（{name}）",
             f"最新：{price}  {sign}{abs(diff):.0f}（{abs(pct):.2f}%）",
             f"參考：{ref}  成交量：{vol} 口",
-            f"更新：{time_fmt}",
+            f"\n📅 成交時間：{date_fmt} {time_fmt}（台北時間）",
         ]
         return "\n".join(lines)
     except Exception as e:
@@ -285,15 +303,30 @@ def _format_us_line(name: str, meta: dict, night: bool = False) -> str:
 
 
 def get_us_market() -> str:
+    from datetime import datetime, timezone, timedelta
     symbols = {"^DJI": "道瓊", "^GSPC": "S&P 500", "^IXIC": "那斯達克",
                "NVDA": "NVIDIA", "TSM": "台積電 ADR", "AAPL": "Apple"}
     lines = ["🌏 美股即時行情"]
+    last_meta = {}
     try:
         for sym, name in symbols.items():
             meta = _fetch_us_quote(sym)
             lines.append(_format_us_line(name, meta, night=False))
+            last_meta = meta
     except Exception as e:
         return f"美股查詢失敗：{e}"
+    # 市場狀態與時間
+    ts = last_meta.get("regularMarketTime")
+    market_state = last_meta.get("marketState", "")
+    state_map = {"REGULAR": "交易中", "PRE": "盤前", "POST": "盤後", "CLOSED": "休市"}
+    state_str = state_map.get(market_state, market_state)
+    if ts:
+        utc_t = datetime.utcfromtimestamp(ts).replace(tzinfo=timezone.utc)
+        ny_t = utc_t.astimezone(timezone(timedelta(hours=-4)))  # EDT
+        lines.append(f"\n📅 最後成交：{ny_t.strftime('%Y/%m/%d %H:%M')} 美東  |  市場：{state_str}")
+    else:
+        now_tp = datetime.now(timezone(timedelta(hours=8))).strftime("%Y/%m/%d %H:%M")
+        lines.append(f"\n📅 查詢時間：{now_tp}（台北）  |  市場：{state_str}")
     return "\n".join(lines)
 
 
