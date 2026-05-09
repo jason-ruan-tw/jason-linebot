@@ -107,37 +107,29 @@ _map_loaded = False
 
 
 def _fetch_stock_map():
-    """背景執行緒：從 TWSE/TPEx 載入完整股票名稱對照表"""
+    """背景執行緒：從 TWSE OpenAPI 載入股票名稱對照表"""
     global _stock_map, _map_loaded
-    try:
-        # 使用 TWSE OpenAPI（JSON 格式，比 HTML 快）
-        r = requests.get(
-            "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
-            verify=False, timeout=30, headers={"User-Agent": "Mozilla/5.0"},
-        )
-        for item in r.json():
-            code = item.get("Code", "")
-            name = item.get("Name", "").strip()
-            if code and name:
-                _stock_map[name] = code
-        print(f"[StockMap] 上市載入 {len(_stock_map)} 檔")
-
-        # 補上櫃
-        r2 = requests.get(
-            "https://openapi.twse.com.tw/v1/exchangeReport/TPEX_STOCK_DAY_ALL",
-            verify=False, timeout=30, headers={"User-Agent": "Mozilla/5.0"},
-        )
-        before = len(_stock_map)
-        for item in r2.json():
-            code = item.get("Code", "")
-            name = item.get("Name", "").strip()
-            if code and name:
-                _stock_map[name] = code
-        print(f"[StockMap] 上櫃再補 {len(_stock_map)-before} 檔，共 {len(_stock_map)} 檔")
-    except Exception as e:
-        print(f"[StockMap] 載入失敗: {e}")
-    finally:
-        _map_loaded = True
+    import time
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+                verify=False, timeout=30, headers={"User-Agent": "Mozilla/5.0"},
+            )
+            items = r.json()
+            if not items:
+                raise ValueError("empty response")
+            for item in items:
+                code = item.get("Code", "")
+                name = item.get("Name", "").strip()
+                if code and name and len(code) <= 6:
+                    _stock_map[name] = code
+            print(f"[StockMap] 上市載入 {len(_stock_map)} 檔")
+            break
+        except Exception as e:
+            print(f"[StockMap] 第{attempt+1}次失敗: {e}")
+            time.sleep(5)
+    _map_loaded = True
 
 
 # 啟動時在背景載入（不阻塞 gunicorn 啟動）
