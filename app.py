@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import requests
+import anthropic
 from flask import Flask, request, abort, send_file
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -45,6 +46,29 @@ print(f"[STARTUP] USER_ID={LINE_USER_ID!r} TOKEN_LEN={len(CHANNEL_TOKEN)}")
 app = Flask(__name__)
 handler = WebhookHandler(CHANNEL_SECRET) if CHANNEL_SECRET else None
 config  = Configuration(access_token=CHANNEL_TOKEN)
+
+# ── Claude AI 問答 ────────────────────────────────
+_claude = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+
+_CLAUDE_SYSTEM = """\
+你是 Jason 的私人助理「助理大大」，部署在 LINE 上。
+Jason 是大成長城蛋品研發部門的研發人員，同時經營甜點工作室「阿莓製甜所」。
+用繁體中文回答，語氣像朋友對話，輕鬆白話，不要用太多條列格式。
+回答要簡潔，因為是 LINE 訊息，不要太長。\
+"""
+
+def ask_claude(text: str) -> str:
+    try:
+        resp = _claude.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=1024,
+            system=_CLAUDE_SYSTEM,
+            messages=[{"role": "user", "content": text}],
+        )
+        return resp.content[0].text
+    except Exception as e:
+        print(f"[Claude] 錯誤: {e}")
+        return f"抱歉，AI 助理暫時無法回應，請稍後再試。"
 
 # ── 信件排程（每 5 分鐘）────────────────────────────
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -565,7 +589,7 @@ def process_text(reply_token: str, text: str):
         if code:
             reply_with_chart(reply_token, get_stock(code), code)
         else:
-            reply(reply_token, f"收到：「{text}」\n\n傳「說明」查看可用指令。")
+            reply(reply_token, ask_claude(text))
 
 
 if handler:
