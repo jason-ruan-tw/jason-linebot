@@ -623,7 +623,7 @@ def debug_push():
 
 @app.route("/", methods=["GET"])
 def index():
-    return "Jason LINE Bot 運行中 ✅"
+    return "Jason LINE Bot 運行中 ✅ v2-claude"
 
 
 if __name__ == "__main__":
