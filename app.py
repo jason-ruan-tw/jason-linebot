@@ -75,9 +75,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from email_check import check_and_notify
 
 def _start_email_scheduler():
+    from datetime import datetime, timedelta
     scheduler = BackgroundScheduler(timezone="Asia/Taipei")
     scheduler.add_job(check_and_notify, "interval", minutes=5, id="email_check",
-                      next_run_time=__import__("datetime").datetime.now())
+                      next_run_time=datetime.now() + timedelta(minutes=5))
     scheduler.start()
     print("[Email] 排程啟動，每 5 分鐘檢查信箱")
 
