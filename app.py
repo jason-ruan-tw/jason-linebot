@@ -46,6 +46,19 @@ app = Flask(__name__)
 handler = WebhookHandler(CHANNEL_SECRET) if CHANNEL_SECRET else None
 config  = Configuration(access_token=CHANNEL_TOKEN)
 
+# ── 信件排程（每 5 分鐘）────────────────────────────
+from apscheduler.schedulers.background import BackgroundScheduler
+from email_check import check_and_notify
+
+def _start_email_scheduler():
+    scheduler = BackgroundScheduler(timezone="Asia/Taipei")
+    scheduler.add_job(check_and_notify, "interval", minutes=5, id="email_check",
+                      next_run_time=__import__("datetime").datetime.now())
+    scheduler.start()
+    print("[Email] 排程啟動，每 5 分鐘檢查信箱")
+
+_start_email_scheduler()
+
 
 def push(text: str):
     """用 push API 傳訊息（不依賴 reply token，適合冷啟動延遲）"""
