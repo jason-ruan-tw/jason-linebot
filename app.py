@@ -147,22 +147,23 @@ def get_stock(code: str) -> str:
                 verify=False, timeout=5,
             )
             arr = r.json().get("msgArray", [])
-            if arr and arr[0].get("z", "-") not in ("-", ""):
+            # 只要有回傳股票名稱就算找到（不強求即時成交價 "z"）
+            if arr and arr[0].get("n", ""):
                 info = arr[0]
                 name   = info.get("n", code)
-                price  = info.get("z", "N/A")
-                open_p = info.get("o", "N/A")
-                high   = info.get("h", "N/A")
-                low    = info.get("l", "N/A")
-                ref    = info.get("y", "N/A")
-                vol    = info.get("v", "N/A")
+                price  = info.get("z", "-")
+                open_p = info.get("o", "-")
+                high   = info.get("h", "-")
+                low    = info.get("l", "-")
+                ref    = info.get("y", "-")
+                vol    = info.get("v", "-")
                 try:
                     diff = float(price) - float(ref)
                     pct  = diff / float(ref) * 100
                     sign = "▲" if diff >= 0 else "▼"
                     change_str = f"{sign} {abs(diff):.2f}（{abs(pct):.2f}%）"
                 except Exception:
-                    change_str = ""
+                    change_str = "（尚無即時成交價）"
                 def fmt_p(v):
                     try: return str(int(float(v))) if float(v) == int(float(v)) else f"{float(v):.2f}"
                     except: return v
