@@ -8,7 +8,7 @@ import os
 import re
 import sys
 import requests
-import google.generativeai as genai
+from google import genai as google_genai
 from flask import Flask, request, abort, send_file
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -47,21 +47,41 @@ app = Flask(__name__)
 handler = WebhookHandler(CHANNEL_SECRET) if CHANNEL_SECRET else None
 config  = Configuration(access_token=CHANNEL_TOKEN)
 
+# ── 每日排程推播 ──────────────────────────────────
+from apscheduler.schedulers.background import BackgroundScheduler
+from daily_push import push_premarket, push_postmarket, push_youtube_summary
+
+def _start_daily_scheduler():
+    scheduler = BackgroundScheduler(timezone="Asia/Taipei")
+    # 週一到週五盤前 9:00、收盤 13:35
+    scheduler.add_job(push_premarket,    "cron", day_of_week="mon-fri", hour=9,  minute=0)
+    scheduler.add_job(push_postmarket,   "cron", day_of_week="mon-fri", hour=13, minute=35)
+    # 每天晚上 21:00 推影片重點
+    scheduler.add_job(push_youtube_summary, "cron", hour=21, minute=0)
+    scheduler.start()
+    print("[Scheduler] 每日推播排程已啟動")
+
+_start_daily_scheduler()
+
 # ── Gemini AI 問答 ───────────────────────────────
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
-_gemini = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=(
-        "你是 Jason 的私人助理「助理大大」，部署在 LINE 上。"
-        "Jason 是大成長城蛋品研發部門的研發人員，同時經營甜點工作室「阿莓製甜所」。"
-        "用繁體中文回答，語氣像朋友對話，輕鬆白話，不要用太多條列格式。"
-        "回答要簡潔，因為是 LINE 訊息，不要太長。"
-    ),
+_GEMINI_SYSTEM = (
+    "你是 Jason 的私人助理「助理大大」，部署在 LINE 上。"
+    "Jason 是大成長城蛋品研發部門的研發人員，同時經營甜點工作室「阿莓製甜所」。"
+    "用繁體中文回答，語氣像朋友對話，輕鬆白話，不要用太多條列格式。"
+    "回答要簡潔，因為是 LINE 訊息，不要太長。"
 )
 
 def ask_ai(text: str) -> str:
     try:
-        resp = _gemini.generate_content(text)
+        client = google_genai.Client(api_key=os.environ.get("GEMINI_API_KEY", ""))
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=text,
+            config=google_genai.types.GenerateContentConfig(
+                system_instruction=_GEMINI_SYSTEM,
+                max_output_tokens=1024,
+            ),
+        )
         return resp.text
     except Exception as e:
         print(f"[Gemini] 錯誤: {e}")
