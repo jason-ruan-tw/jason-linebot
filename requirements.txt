@@ -8,7 +8,7 @@ matplotlib==3.9.4
 pandas==2.3.3
 numpy==2.0.2
 beautifulsoup4==4.13.4
-google-genai==1.14.0
 apscheduler==3.10.4
 yt-dlp==2025.3.31
 youtube-transcript-api==1.1.0
+groq==0.11.0

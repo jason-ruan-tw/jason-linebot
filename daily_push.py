@@ -16,6 +16,7 @@ urllib3.disable_warnings()
 LINE_TOKEN   = "GQ7j41XU5eTF46OZBBsfqra/AF6tIec2aGkmKswrx/ymyCyTlbmhoqOl2H0cDo7gBQm8IkDf6Zib4tQ6OXBGQuqotzk4IyphDJubGs0Kc+23hbxmu/HknMVNVWRd1c1Y2PD1ryGBN6BHzYVPZtF1VgdB04t89/1O/w1cDnyilFU="
 LINE_USER_ID = "U7818f4e68740285a54aff722d7c05863"
 TAIPEI       = timezone(timedelta(hours=8))
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 CHANNELS = {
     "雷老闆": "UCFsyPpT525Fass_s7fA2qhg",
@@ -160,30 +161,47 @@ def find_video_with_transcript(channel_id: str) -> tuple[str, str, str]:
     return "", "", ""
 
 
-def smart_extract(text: str, top_n: int = 10) -> list:
-    """關鍵句萃取：依關鍵字評分，取高分句子"""
-    # 按語意切句
+def ai_summarize(transcript: str, channel_name: str) -> str:
+    """用 Groq AI 整理影片重點，格式與截圖一致"""
+    if not GROQ_API_KEY:
+        return _rule_extract(transcript)
+    try:
+        from groq import Groq
+        client = Groq(api_key=GROQ_API_KEY)
+        prompt = f"""以下是台股 YouTuber「{channel_name}」今日影片的逐字稿（部分）：
+
+{transcript[:6000]}
+
+請用繁體中文整理出以下三個重點，每項 1~3 句，簡潔有力：
+• 主攻族群：今日討論的主要股票族群或個股
+• 重要事件：市場重大消息、法說會、數據
+• 操作方向：具體建議、目標價、停損位
+
+只輸出三個重點，不要多餘說明。"""
+
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=400,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[Groq] 錯誤: {e}")
+        return _rule_extract(transcript)
+
+
+def _rule_extract(text: str) -> str:
+    """備用：規則式萃取"""
     parts = re.split(r"[，。！？\n]", text)
     sentences = [p.strip() for p in parts if len(p.strip()) >= 8]
-
     scored = []
     for s in sentences:
         score = sum(v for k, v in SCORE_MAP.items() if k in s)
-        score += len(re.findall(r"\b\d{4,5}\b", s)) * 2   # 股票代碼加分
-        score += len(re.findall(r"\d+\.?\d*\s*[%元]", s))  # 數字加分
+        score += len(re.findall(r"\b\d{4,5}\b", s)) * 2
         if score > 0:
             scored.append((score, s))
-
     scored.sort(reverse=True)
-    seen, results = set(), []
-    for _, s in scored:
-        key = s[:15]
-        if key not in seen:
-            seen.add(key)
-            results.append(s)
-        if len(results) >= top_n:
-            break
-    return results
+    return "\n".join(f"• {s}" for _, s in scored[:6])
 
 
 def push_youtube_summary():
@@ -201,12 +219,10 @@ def push_youtube_summary():
                 push_line(f"📹 {name} {date_str}\n《{title[:50]}》\n\n字幕尚未生成，直接看影片\n🔗 https://youtu.be/{video_id}")
                 continue
 
-            key_points = smart_extract(transcript)
-            if not key_points:
-                key_points = [transcript[:200] + "..."]
+            summary = ai_summarize(transcript, name)
 
             msg = f"📹 {name} {date_str} 影片重點\n《{title[:40]}》\n\n"
-            msg += "\n".join(f"• {p}" for p in key_points)
+            msg += summary
             msg += f"\n\n🔗 https://youtu.be/{video_id}"
             push_line(msg)
             print(f"[DailyPush] {name} 影片重點推播完成")

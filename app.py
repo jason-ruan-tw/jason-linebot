@@ -8,7 +8,6 @@ import os
 import re
 import sys
 import requests
-from google import genai as google_genai
 from flask import Flask, request, abort, send_file
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -63,8 +62,8 @@ def _start_daily_scheduler():
 
 _start_daily_scheduler()
 
-# ── Gemini AI 問答 ───────────────────────────────
-_GEMINI_SYSTEM = (
+# ── Groq AI 問答 ────────────────────────────────
+_AI_SYSTEM = (
     "你是 Jason 的私人助理「助理大大」，部署在 LINE 上。"
     "Jason 是大成長城蛋品研發部門的研發人員，同時經營甜點工作室「阿莓製甜所」。"
     "用繁體中文回答，語氣像朋友對話，輕鬆白話，不要用太多條列格式。"
@@ -73,18 +72,19 @@ _GEMINI_SYSTEM = (
 
 def ask_ai(text: str) -> str:
     try:
-        client = google_genai.Client(api_key=os.environ.get("GEMINI_API_KEY", ""))
-        resp = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=text,
-            config=google_genai.types.GenerateContentConfig(
-                system_instruction=_GEMINI_SYSTEM,
-                max_output_tokens=1024,
-            ),
+        from groq import Groq
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": _AI_SYSTEM},
+                {"role": "user", "content": text},
+            ],
+            max_tokens=1024,
         )
-        return resp.text
+        return resp.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[Gemini] 錯誤: {e}")
+        print(f"[Groq] 錯誤: {e}")
         return "抱歉，AI 助理暫時無法回應，請稍後再試。"
 
 
