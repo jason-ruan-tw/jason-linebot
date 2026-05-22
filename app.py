@@ -48,13 +48,14 @@ config  = Configuration(access_token=CHANNEL_TOKEN)
 
 # ── 每日排程推播 ──────────────────────────────────
 from apscheduler.schedulers.background import BackgroundScheduler
-from daily_push import push_premarket, push_postmarket, push_youtube_summary
+from daily_push import push_premarket, push_postmarket, push_youtube_summary, push_morning_briefing
 
 def _start_daily_scheduler():
     scheduler = BackgroundScheduler(timezone="Asia/Taipei")
-    # 週一到週五盤前 9:00、收盤 13:35
-    scheduler.add_job(push_premarket,    "cron", day_of_week="mon-fri", hour=9,  minute=0)
-    scheduler.add_job(push_postmarket,   "cron", day_of_week="mon-fri", hour=13, minute=35)
+    # 週一到週五 8:00 盤前重點、9:00 開盤提醒、13:35 收盤整理
+    scheduler.add_job(push_morning_briefing, "cron", day_of_week="mon-fri", hour=8,  minute=0)
+    scheduler.add_job(push_premarket,        "cron", day_of_week="mon-fri", hour=9,  minute=0)
+    scheduler.add_job(push_postmarket,       "cron", day_of_week="mon-fri", hour=13, minute=35)
     # 每天晚上 21:00 推影片重點
     scheduler.add_job(push_youtube_summary, "cron", hour=21, minute=0)
     scheduler.start()

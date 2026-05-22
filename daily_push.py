@@ -231,6 +231,136 @@ def push_youtube_summary():
             print(f"[DailyPush] {name} 錯誤: {e}")
 
 
+# ── 早盤重點推播 ───────────────────────────────────────
+
+_IDX_SYMS = {"^DJI": "道瓊", "^GSPC": "S&P 500", "^IXIC": "那斯達克", "^SOX": "費半"}
+_TECH_SYMS = {
+    "NVDA": "輝達", "AAPL": "蘋果", "GOOGL": "Google", "MSFT": "微軟",
+    "AMZN": "亞馬遜", "AVGO": "博通", "TSLA": "特斯拉", "META": "Meta",
+}
+_CHINA_SYMS = {
+    "BABA": "阿里", "JD": "京東", "BIDU": "百度",
+    "NIO": "蔚來", "XPEV": "小鵬", "LI": "理想",
+}
+_IND_SYMS = {
+    "^TNX": ("美債10年", 3), "^VIX": ("恐慌VIX", 2),
+    "DX-Y.NYB": ("美元指數", 3), "USDTWD=X": ("美元/台幣", 3), "EWT": ("台灣EWT", 2),
+}
+
+
+def _get_quotes(symbols):
+    """取各標的最近收盤和漲跌幅，回傳 {sym: (price, pct)}"""
+    import yfinance as yf
+    result = {}
+    for sym in symbols:
+        try:
+            hist = yf.Ticker(sym).history(period="5d", interval="1d", auto_adjust=True)
+            if len(hist) >= 2:
+                prev = float(hist["Close"].iloc[-2])
+                last = float(hist["Close"].iloc[-1])
+                if prev:
+                    result[sym] = (last, (last - prev) / prev * 100)
+        except Exception as e:
+            print(f"[YF] {sym}: {e}")
+    return result
+
+
+def _fmt_arrow(price, pct, dec=2):
+    s = "▲" if pct >= 0 else "▼"
+    return f"{price:,.{dec}f}  {s}{abs(pct):.2f}%"
+
+
+def _make_lines(sym_map, q):
+    lines = []
+    for sym, val in sym_map.items():
+        if sym not in q:
+            continue
+        name = val if isinstance(val, str) else val[0]
+        dec  = 2   if isinstance(val, str) else val[1]
+        lines.append(f"{name}({sym}): {_fmt_arrow(q[sym][0], q[sym][1], dec)}")
+    return lines
+
+
+def _rss_headlines(url, n=6):
+    """從 RSS 抓新聞標題"""
+    from bs4 import BeautifulSoup
+    try:
+        r = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        r.raise_for_status()
+        soup = BeautifulSoup(r.content, "html.parser")
+        titles = []
+        for item in soup.find_all("item")[:n]:
+            t = item.find("title")
+            if t and t.get_text(strip=True):
+                titles.append(t.get_text(strip=True))
+        return titles
+    except Exception as e:
+        print(f"[RSS] {url}: {e}")
+        return []
+
+
+def push_morning_briefing():
+    """每日 08:00 盤前重點推播"""
+    print("[DailyPush] 準備盤前重點...")
+    date_str = datetime.now(TAIPEI).strftime("%m/%d")
+
+    all_syms = list(_IDX_SYMS) + list(_TECH_SYMS) + list(_CHINA_SYMS) + list(_IND_SYMS)
+    q = _get_quotes(all_syms)
+
+    idx_lines   = _make_lines(_IDX_SYMS, q)
+    tech_lines  = _make_lines(_TECH_SYMS, q)
+    china_lines = _make_lines(_CHINA_SYMS, q)
+    ind_lines   = _make_lines(_IND_SYMS, q)
+
+    news = (
+        _rss_headlines("https://feeds.marketwatch.com/marketwatch/topstories/") or
+        _rss_headlines("https://finance.yahoo.com/rss/topstories")
+    )
+
+    news_block = ""
+    if GROQ_API_KEY and news:
+        try:
+            from groq import Groq
+            snapshot = "\n".join(idx_lines + tech_lines[:4])
+            prompt = (
+                "以下是今日最新財經新聞標題：\n" +
+                "\n".join(f"- {t}" for t in news) +
+                "\n\n美股收盤數據：\n" + snapshot +
+                "\n\n請用繁體中文、口語化語氣，用 2-3 段自然段落（不要條列、不要 markdown 符號），"
+                "整理最重要的 2-3 個市場新聞重點，每段 2-3 句，提到具體數字與影響。"
+                "總字數控制在 250 字以內。"
+            )
+            resp = Groq(api_key=GROQ_API_KEY).chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+            )
+            news_block = resp.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"[Groq] 盤前摘要失敗: {e}")
+
+    parts = [f"📌 盤前重點｜{date_str} ☕ 3分鐘速覽"]
+
+    if news_block:
+        parts.append(f"⭐️ 重點時事\n{news_block}")
+    elif news:
+        parts.append("⭐️ 重點時事\n" + "\n".join(f"• {t}" for t in news[:4]))
+
+    if idx_lines:
+        us = "✅ 美股收盤\n" + "\n".join(idx_lines)
+        if tech_lines:
+            us += "\n\n科技股\n" + "\n".join(tech_lines)
+        if china_lines:
+            us += "\n\n中概股\n" + "\n".join(china_lines)
+        parts.append(us)
+
+    if ind_lines:
+        parts.append("📊 市場指標\n" + "\n".join(ind_lines))
+
+    push_line("\n\n".join(parts)[:4900])
+    print("[DailyPush] 盤前重點推播完成")
+
+
 if __name__ == "__main__":
     # 測試用
     import sys
@@ -239,5 +369,7 @@ if __name__ == "__main__":
         push_premarket()
     elif cmd == "post":
         push_postmarket()
+    elif cmd == "morning":
+        push_morning_briefing()
     else:
         push_youtube_summary()
