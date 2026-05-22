@@ -281,22 +281,48 @@ def _make_lines(sym_map, q):
     return lines
 
 
-def _rss_headlines(url, n=6):
-    """從 RSS 抓新聞標題"""
-    from bs4 import BeautifulSoup
+_RSS_SOURCES = [
+    "https://feeds.marketwatch.com/marketwatch/topstories/",
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+    "https://finance.yahoo.com/rss/topstories",
+]
+
+
+def _rss_articles(url, n=8):
+    """從 RSS 抓新聞標題 + 摘要內文"""
+    import warnings
+    from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
     try:
         r = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
         r.raise_for_status()
-        soup = BeautifulSoup(r.content, "html.parser")
-        titles = []
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+            soup = BeautifulSoup(r.content, "html.parser")
+        articles = []
         for item in soup.find_all("item")[:n]:
-            t = item.find("title")
-            if t and t.get_text(strip=True):
-                titles.append(t.get_text(strip=True))
-        return titles
+            title_tag = item.find("title")
+            desc_tag  = item.find("description")
+            title = title_tag.get_text(strip=True) if title_tag else ""
+            desc  = desc_tag.get_text(strip=True)  if desc_tag  else ""
+            if title:
+                articles.append({"title": title, "desc": desc[:400]})
+        return articles
     except Exception as e:
         print(f"[RSS] {url}: {e}")
         return []
+
+
+def _fetch_news():
+    """從多個 RSS 來源抓新聞，合併去重後回傳"""
+    seen, articles = set(), []
+    for url in _RSS_SOURCES:
+        for a in _rss_articles(url):
+            if a["title"] not in seen:
+                seen.add(a["title"])
+                articles.append(a)
+        if len(articles) >= 10:
+            break
+    return articles[:10]
 
 
 def push_morning_briefing():
@@ -312,28 +338,30 @@ def push_morning_briefing():
     china_lines = _make_lines(_CHINA_SYMS, q)
     ind_lines   = _make_lines(_IND_SYMS, q)
 
-    news = (
-        _rss_headlines("https://feeds.marketwatch.com/marketwatch/topstories/") or
-        _rss_headlines("https://finance.yahoo.com/rss/topstories")
-    )
+    articles = _fetch_news()
 
     news_block = ""
-    if GROQ_API_KEY and news:
+    if GROQ_API_KEY and articles:
         try:
             from groq import Groq
             snapshot = "\n".join(idx_lines + tech_lines[:4])
+            news_text = "\n\n".join(
+                f"【{a['title']}】\n{a['desc']}" if a["desc"] else f"【{a['title']}】"
+                for a in articles
+            )
             prompt = (
-                "以下是今日最新財經新聞標題：\n" +
-                "\n".join(f"- {t}" for t in news) +
+                "以下是今日最新財經新聞（標題 + 摘要）：\n\n" + news_text +
                 "\n\n美股收盤數據：\n" + snapshot +
-                "\n\n請用繁體中文、口語化語氣，用 2-3 段自然段落（不要條列、不要 markdown 符號），"
-                "整理最重要的 2-3 個市場新聞重點，每段 2-3 句，提到具體數字與影響。"
-                "總字數控制在 250 字以內。"
+                "\n\n請用繁體中文、口語化語氣，整理出 3～4 個最重要的市場新聞重點。"
+                "每個重點用一段自然段落（2～3 句），提到具體數字和市場影響。"
+                "不要用條列符號，不要用 markdown，段落之間空一行。"
+                "最後加一行「今日操作建議」，用 1～2 句白話說明今天該注意什麼。"
+                "總字數 350～450 字。"
             )
             resp = Groq(api_key=GROQ_API_KEY).chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=500,
+                max_tokens=900,
             )
             news_block = resp.choices[0].message.content.strip()
         except Exception as e:
@@ -343,8 +371,8 @@ def push_morning_briefing():
 
     if news_block:
         parts.append(f"⭐️ 重點時事\n{news_block}")
-    elif news:
-        parts.append("⭐️ 重點時事\n" + "\n".join(f"• {t}" for t in news[:4]))
+    elif articles:
+        parts.append("⭐️ 重點時事\n" + "\n".join(f"• {a['title']}" for a in articles[:5]))
 
     if idx_lines:
         us = "✅ 美股收盤\n" + "\n".join(idx_lines)
