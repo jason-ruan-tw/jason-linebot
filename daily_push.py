@@ -282,9 +282,11 @@ def _make_lines(sym_map, q):
 
 
 _RSS_SOURCES = [
-    "https://feeds.marketwatch.com/marketwatch/topstories/",
-    "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-    "https://finance.yahoo.com/rss/topstories",
+    "https://feeds.marketwatch.com/marketwatch/marketpulse/",       # MarketWatch 市場即時
+    "https://www.cnbc.com/id/15839135/device/rss/rss.html",        # CNBC 股市
+    "https://www.cnbc.com/id/10001147/device/rss/rss.html",        # CNBC 經濟
+    "https://feeds.marketwatch.com/marketwatch/breaking/",          # MarketWatch 頭條
+    "https://finance.yahoo.com/rss/topstories",                     # Yahoo Finance
 ]
 
 

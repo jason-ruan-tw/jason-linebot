@@ -617,6 +617,16 @@ def ping():
     return "pong"
 
 
+@app.route("/test-morning")
+def test_morning():
+    """手動觸發盤前重點推播（測試用）"""
+    try:
+        push_morning_briefing()
+        return "盤前重點推播完成，請查看 LINE"
+    except Exception as e:
+        return f"推播失敗：{e}", 500
+
+
 @app.route("/debug-push")
 def debug_push():
     """測試從 Render 推訊息，確認憑證正確"""
