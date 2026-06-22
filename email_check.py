@@ -15,7 +15,7 @@ urllib3.disable_warnings()
 
 EIP_LOGIN_URL = "https://eip.dachan.com/Login?ReturnUrl=/EHome"
 EIP_USER      = "10013262"
-EIP_PASS      = "Jason2002911225"
+EIP_PASS      = "2002911225Jason"
 MAIL_SSO_URL  = "https://eip.dachan.com/SSOSubSysLoginWin/e81be206-d1d3-4f48-ad6a-debafb523e58"
 INBOX_API     = (
     "https://mail.dachan.com/mail/10013262.nsf/iNotes/Proxy/"
