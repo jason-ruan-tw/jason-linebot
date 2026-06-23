@@ -187,7 +187,7 @@ def get_stock(code: str) -> str:
         for market in ("tse", "otc"):
             r = requests.get(
                 f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={market}_{code}.tw",
-                verify=False, timeout=5,
+                headers={"User-Agent": "Mozilla/5.0"}, verify=False, timeout=5,
             )
             arr = r.json().get("msgArray", [])
             # 只要有回傳股票名稱就算找到（不強求即時成交價 "z"）
