@@ -637,6 +637,19 @@ def debug_push():
         return f"push FAILED: {e}. USER_ID={LINE_USER_ID!r} TOKEN_LEN={len(CHANNEL_TOKEN)}", 500
 
 
+@app.route("/debug-stock/<code>")
+def debug_stock(code: str):
+    """直接回報 Render 打 TWSE API 拿到的原始結果，方便排查查股失敗"""
+    try:
+        r = requests.get(
+            f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{code}.tw",
+            headers={"User-Agent": "Mozilla/5.0"}, verify=False, timeout=5,
+        )
+        return f"status={r.status_code} len={len(r.text)} body={r.text[:500]!r}"
+    except Exception as e:
+        return f"request failed: {e}", 500
+
+
 @app.route("/", methods=["GET"])
 def index():
     return "Jason LINE Bot 運行中 ✅ v2-claude"
