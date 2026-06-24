@@ -168,6 +168,7 @@ except Exception as _e:
         "精金": "3049", "聯茂": "6213", "日月光投控": "3711", "聯電": "2303",
     }
 _map_loaded = True
+_code_to_name: dict = {code: name for name, code in _stock_map.items()}
 
 
 
@@ -182,47 +183,40 @@ def name_to_code(name: str) -> str:
 
 # ── 查個股 ────────────────────────────────────────
 def get_stock(code: str) -> str:
+    """改用 yfinance 查詢，TWSE mis API 會擋掉 Render 美國機房的請求"""
+    _load_chart_libs()
+    def fmt_p(v):
+        try: return str(int(float(v))) if float(v) == int(float(v)) else f"{float(v):.2f}"
+        except Exception: return v
     try:
-        # 先查上市
-        for market in ("tse", "otc"):
-            r = requests.get(
-                f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={market}_{code}.tw",
-                headers={"User-Agent": "Mozilla/5.0"}, verify=False, timeout=5,
+        for suffix in (".TW", ".TWO"):
+            try:
+                fi = yf.Ticker(f"{code}{suffix}").fast_info
+                price = fi.get("lastPrice")
+            except Exception:
+                price = None
+            if not price:
+                continue
+            name   = _code_to_name.get(code, code)
+            open_p = fi.get("open", "-")
+            high   = fi.get("dayHigh", "-")
+            low    = fi.get("dayLow", "-")
+            ref    = fi.get("previousClose", "-")
+            vol    = fi.get("lastVolume", "-")
+            try:
+                diff = float(price) - float(ref)
+                pct  = diff / float(ref) * 100
+                sign = "▲" if diff >= 0 else "▼"
+                change_str = f"{sign} {abs(diff):.2f}（{abs(pct):.2f}%）"
+            except Exception:
+                change_str = "（尚無即時成交價）"
+            vol_str = f"{int(vol) // 1000:,}" if isinstance(vol, (int, float)) else vol
+            return (
+                f"📈 {code} {name}\n"
+                f"現價：{fmt_p(price)}  {change_str}\n"
+                f"開：{fmt_p(open_p)}  高：{fmt_p(high)}  低：{fmt_p(low)}\n"
+                f"昨收：{fmt_p(ref)}  成交量：{vol_str} 張"
             )
-            arr = r.json().get("msgArray", [])
-            # 只要有回傳股票名稱就算找到（不強求即時成交價 "z"）
-            if arr and arr[0].get("n", ""):
-                info = arr[0]
-                name   = info.get("n", code)
-                price  = info.get("z", "-")
-                open_p = info.get("o", "-")
-                high   = info.get("h", "-")
-                low    = info.get("l", "-")
-                ref    = info.get("y", "-")
-                vol    = info.get("v", "-")
-                try:
-                    diff = float(price) - float(ref)
-                    pct  = diff / float(ref) * 100
-                    sign = "▲" if diff >= 0 else "▼"
-                    change_str = f"{sign} {abs(diff):.2f}（{abs(pct):.2f}%）"
-                except Exception:
-                    change_str = "（尚無即時成交價）"
-                def fmt_p(v):
-                    try: return str(int(float(v))) if float(v) == int(float(v)) else f"{float(v):.2f}"
-                    except: return v
-                # 資料日期與時間
-                d_str = info.get("d", "")  # 20260508
-                t_str = info.get("t", "")  # 13:30:00
-                ts = ""
-                if d_str and t_str:
-                    ts = f"\n📅 成交時間：{d_str[:4]}/{d_str[4:6]}/{d_str[6:]} {t_str}（台北時間）"
-                return (
-                    f"📈 {code} {name}\n"
-                    f"現價：{fmt_p(price)}  {change_str}\n"
-                    f"開：{fmt_p(open_p)}  高：{fmt_p(high)}  低：{fmt_p(low)}\n"
-                    f"昨收：{fmt_p(ref)}  成交量：{vol} 張"
-                    f"{ts}"
-                )
         return f"找不到股票代碼 {code}，請確認是否正確。"
     except Exception as e:
         return f"查詢失敗：{e}"
